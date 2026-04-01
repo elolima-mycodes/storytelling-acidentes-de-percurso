@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escolhas no Trajeto - Simulador</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --danger-color: #f72585;
+        }
+
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+        }
+
+        #game-screen {
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            transition: background-image 0.8s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #game-screen::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1;
+        }
+
+        #blood-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url('docs/imgs/game-over.png');
+            background-size: cover;
+            z-index: 2;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in;
+        }
+
+        .blood-active {
+            opacity: 1 !important;
+        }
+
+        .game-card {
+            position: relative;
+            z-index: 3;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+            border: none;
+            backdrop-filter: blur(5px);
+        }
+
+        .btn-choice {
+            transition: transform 0.2s, background-color 0.2s;
+            border-radius: 50px;
+            padding: 12px 25px;
+            font-weight: 600;
+        }
+
+        .btn-choice:hover {
+            transform: scale(1.03);
+        }
+
+        .icon-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: -60px auto 20px;
+            background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-screen">
+    <div id="blood-overlay"></div>
+    
+    <div class="card game-card p-4 text-center mt-5">
+        <div id="scene-icon" class="icon-circle text-primary">
+            <i class="bi bi-alarm"></i>
+        </div>
+        <h2 id="scene-title" class="fw-bold text-dark h3"></h2>
+        <p id="scene-text" class="text-secondary lead fs-6 mb-4"></p>
+        <div id="choices" class="d-grid gap-3"></div>
+    </div>
+</div>
+
+<script>
+    let estaAtrasado = false;
+
+    const story = {
+        inicio: {
+            title: "O Despertar",
+            text: "O despertador toca às 06:00. O cansaço pesa, mas o dia começou. O que você faz?",
+            icon: "bi-alarm",
+            color: "text-primary",
+            bg: "url('docs/imgs/alarme.png')",
+            choices: [
+                { text: "Levantar e se arrumar", target: "escolha_transporte" },
+                { text: "Só mais 5 minutinhos...", target: "atraso" }
+            ]
+        },
+        atraso: {
+            title: "Atraso Crônico",
+            text: "Aqueles 5 minutos viraram 25. O ônibus da firma já passou! Sua única opção agora é ir de carro para tentar compensar o tempo.",
+            icon: "bi-stopwatch-fill",
+            color: "text-warning",
+            bg: "url('docs/imgs/alarme2.png')",
+            choices: [{ text: "Pegar o carro e sair correndo", target: "carro_trajeto" }]
+        },
+        escolha_transporte: {
+            title: "O Trajeto",
+            text: "Você está no horário. Como pretende se deslocar hoje?",
+            icon: "bi-geo-alt-fill",
+            color: "text-info",
+            bg: "url('docs/imgs/escolher-trajeto.png')",
+            choices: [
+                { text: "Ir de Ônibus", target: "onibus_trajeto" },
+                { text: "Ir de Carro", target: "carro_trajeto" }
+            ]
+        },
+        onibus_trajeto: {
+            title: "No Ônibus",
+            text: "Você está ouvindo música no fone de ouvido no volume máximo. O ônibus para no seu ponto. O que faz?",
+            icon: "bi-bus-front",
+            color: "text-info",
+            bg: "url('docs/imgs/interior-do-onibus.jpg')",
+            choices: [
+                { text: "Descer com fones no máximo", target: "acidente_onibus", isAccident: true },
+                { text: "Tirar um lado", target: "chegada_segura" }
+            ]
+        },
+        carro_trajeto: {
+            title: "Ao Volante",
+            text: "O trânsito está travado. Seu celular toca: é uma ligação importante. Atender agora?",
+            icon: "bi-car-front-fill",
+            color: "text-info",
+            bg: "url('docs/imgs/dirigindo.jpg')",
+            choices: [
+                { text: "Atender para adiantar o assunto", target: "acidente_carro", isAccident: true },
+                { text: "Ignorar e focar na direção", target: "chegada_segura" }
+            ]
+        },
+        acidente_onibus: {
+            title: "Colisão e Queda!",
+            text: "Ao descer, você trombou com um pedestre que estava correndo. Você caiu feio e seus pertences quebraram.",
+            icon: "bi-exclamation-triangle-fill",
+            color: "text-danger",
+            bg: "url('docs/imgs/acidente.jpg')",
+            choices: [{ text: "Ver meus direitos (Lei 8.213)", target: "lei" }]
+        },
+        acidente_carro: {
+            title: "Sinal Vermelho!",
+            text: "A distração da ligação fez você avançar o sinal fechado. Você colidiu com outro veículo. O impacto foi forte.",
+            icon: "bi-crash-front",
+            color: "text-danger",
+            bg: "url('docs/imgs/acidente.jpg')",
+            choices: [{ text: "Ver meus direitos (Lei 8.213)", target: "lei" }]
+        },
+        chegada_segura: {
+            title: "Chegada Segura",
+            text: "Você chegou intacto! Mas no mural, você vê informações sobre segurança. Sabe como está protegido se algo acontecer?",
+            icon: "bi-shield-check",
+            color: "text-success",
+            bg: "url('docs/imgs/empresa.jpg')",
+            choices: [
+                { text: "Conhecer a Lei 8.213/1991", target: "lei" },
+                { text: "Ver sobre Reabilitação", target: "reab" }
+            ]
+        },
+        lei: {
+            title: "Art. 21, IV - Seu Amparo",
+            text: "A Lei 8.213/1991 equipara o acidente de percurso ao de trabalho. Você tem estabilidade e auxílio garantidos.",
+            icon: "bi-journal-check",
+            color: "text-primary",
+            bg: "url('docs/imgs/conscientizacao.jpg')",
+            choices: [
+                { text: "E se houver sequelas? (Reabilitação)", target: "reab" },
+                { text: "Reiniciar Simulação", target: "inicio" }
+            ]
+        },
+        reab: {
+            title: "Reabilitação Profissional",
+            text: "O INSS reeduca o trabalhador acidentado para novas funções, garantindo sua volta ao mercado com dignidade.",
+            icon: "bi-person-gear",
+            color: "text-info",
+            bg: "url('docs/imgs/conscientizacao2.png')",
+            choices: [{ text: "Finalizar e Reiniciar", target: "inicio" }]
+        }
+    };
+
+    function updateScreen(id) {
+        const data = story[id];
+        const screen = document.getElementById('game-screen');
+        const blood = document.getElementById('blood-overlay');
+        
+        blood.classList.remove('blood-active');
+
+        screen.style.backgroundImage = data.bg;
+        document.getElementById('scene-title').innerText = data.title;
+        document.getElementById('scene-text').innerText = data.text;
+        
+        const iconDiv = document.getElementById('scene-icon');
+        iconDiv.className = `icon-circle ${data.color}`;
+        iconDiv.innerHTML = `<i class="bi ${data.icon}"></i>`;
+
+        const btnContainer = document.getElementById('choices');
+        btnContainer.innerHTML = "";
+
+        data.choices.forEach(choice => {
+            const btn = document.createElement('button');
+            btn.className = `btn ${choice.isAccident ? 'btn-danger' : 'btn-primary'} btn-choice`;
+            btn.innerText = choice.text;
+            btn.onclick = () => {
+                if (choice.isAccident) {
+                    blood.classList.add('blood-active');
+                    setTimeout(() => {
+                        updateScreen(choice.target);
+                    }, 1000);
+                } else {
+                    updateScreen(choice.target);
+                }
+            };
+            btnContainer.appendChild(btn);
+        });
+    }
+
+    updateScreen('inicio');
+</script>
+</body>
+</html>
